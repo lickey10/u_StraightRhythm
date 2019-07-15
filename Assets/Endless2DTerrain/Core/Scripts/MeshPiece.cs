@@ -326,10 +326,20 @@ namespace Endless2DTerrain
                     if (meshCollider == null) { meshCollider = MeshObject.AddComponent<MeshCollider>(); }
                 }
             }
-            else
+            else//this is the side
             {
                 if (meshRenderer == null) { meshRenderer = MeshObject.AddComponent<MeshRenderer>(); }
                 if (meshCollider == null) { meshCollider = MeshObject.AddComponent<MeshCollider>(); }
+
+                //add planes to sides so vehicles can't run off road
+                GameObject plane = GameObject.CreatePrimitive(PrimitiveType.Plane);
+                plane.name = "SidePlane_R";
+                plane.transform.parent = MeshObject.transform;
+
+                GameObject planeL = GameObject.CreatePrimitive(PrimitiveType.Plane);
+                planeL.name = "SidePlane_L";
+                planeL.transform.parent = MeshObject.transform;
+
             }
 			
 			GameObject.DestroyImmediate(meshFilter.sharedMesh);

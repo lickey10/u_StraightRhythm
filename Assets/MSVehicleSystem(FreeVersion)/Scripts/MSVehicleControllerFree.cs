@@ -477,6 +477,11 @@ public class MSVehicleControllerFree : MonoBehaviour {
 	[HideInInspector] 
 	public bool isInsideTheCar;
 
+    [HideInInspector]
+    float startingZValue = 0;
+    [HideInInspector]
+    Quaternion startingRotation;
+
 	MSSceneControllerFree controls;
 
 	void Awake(){
@@ -532,6 +537,9 @@ public class MSVehicleControllerFree : MonoBehaviour {
 		} else {
 			enableSkidMarksOnStart = false;
 		}
+
+        startingZValue = transform.position.z;
+        startingRotation = transform.rotation;
 	}
 
 	void SetValues(){
@@ -756,14 +764,18 @@ public class MSVehicleControllerFree : MonoBehaviour {
 			if (nextIndex == -1) {
 				for (int x = 0; x < _cameras.cameras.Length; x++) {
 					_cameras.cameras [x]._camera.gameObject.SetActive (false);
-				}
+                    _cameras.cameras[x]._camera.gameObject.tag = "Untagged";
+
+                }
 			} else {
 				for (int x = 0; x < _cameras.cameras.Length; x++) {
 					if (x == nextIndex) {
 						_cameras.cameras [x]._camera.gameObject.SetActive (true);
-					} else {
+                        _cameras.cameras[x]._camera.gameObject.tag = "MainCamera";
+                    } else {
 						_cameras.cameras [x]._camera.gameObject.SetActive (false);
-					}
+                        _cameras.cameras[x]._camera.gameObject.tag = "Untagged";
+                    }
 				}
 			}
 			changeTypeCamera = false;
@@ -1038,8 +1050,11 @@ public class MSVehicleControllerFree : MonoBehaviour {
 		StabilizeVehicleRollForces ();
 		StabilizeAirRotation ();
 		StabilizeAngularRotation ();
-		//
 
+        //make sure we are still on track
+        //transform.SetPositionAndRotation(new Vector3(transform.position.x, transform.position.y, startingZValue), startingRotation);
+        //ms_Rigidbody.MoveRotation(startingRotation);
+        
 		//extra gravity
 		if (_vehicleSettings._aerodynamics.extraGravity) {
 			gravityValueFixedUpdate = 0;
@@ -1151,13 +1166,21 @@ public class MSVehicleControllerFree : MonoBehaviour {
 			distanceXForceTemp = ms_Rigidbody.centerOfMass.y - transform.InverseTransformPoint(wheelCollider.transform.position).y + wheelCollider.radius + (1.0f - wheelCollider.suspensionSpring.targetPosition) * wheelCollider.suspensionDistance;
 			lateralForcePointTemp = tempWheelHit.point + wheelCollider.transform.up * _vehicleSettings.improveControl.helpToStraightenOut * distanceXForceTemp;
 			forwardForceTemp = tempWheelHit.forwardDir * (tireFO.y)*3.0f;
-			lateralForceTemp = tempWheelHit.sidewaysDir * (tireFO.x);
+            lateralForceTemp = tempWheelHit.sidewaysDir * (tireFO.x);
 			if (Mathf.Abs(horizontalInput)>0.1f && wheelCollider.steerAngle != 0.0f && Mathf.Sign(wheelCollider.steerAngle) != Mathf.Sign(tireSL.x)){
-				lateralForcePointTemp += tempWheelHit.forwardDir * _vehicleSettings.improveControl.helpToTurn;
-			}
+                //stop steering
+                lateralForcePointTemp += tempWheelHit.forwardDir * _vehicleSettings.improveControl.helpToTurn;
+
+            }
+
 			ms_Rigidbody.AddForceAtPosition(forwardForceTemp, tempWheelHit.point);
             //ms_Rigidbody.AddForceAtPosition(lateralForceTemp, lateralForcePointTemp);
-            ms_Rigidbody.AddForceAtPosition(lateralForceTemp*0, lateralForcePointTemp);
+
+            //keep upright
+            //ms_Rigidbody.AddForceAtPosition(lateralForceTemp*0, lateralForcePointTemp);
+
+            //tilt forward/backward with horizontalInput
+            ms_Rigidbody.AddTorque((transform.right) * horizontalInput * _vehicleSettings.vehicleMass * 6f);
         }
 	}
 
@@ -1349,8 +1372,8 @@ public class MSVehicleControllerFree : MonoBehaviour {
 		roolForce2 = (leftFrontForce - rightFrontForce) * _vehicleSettings._aerodynamics.feelingHeavy*_vehicleSettings.vehicleMass*inclinationFactorForcesDown;
 		//rodasTraz
 		if (isGround1) {
-			ms_Rigidbody.AddForceAtPosition (_wheels.leftRearWheel.wheelCollider.transform.up * -roolForce1, _wheels.leftRearWheel.wheelCollider.transform.position); 
-		}
+            ms_Rigidbody.AddForceAtPosition(_wheels.leftRearWheel.wheelCollider.transform.up * -roolForce1, _wheels.leftRearWheel.wheelCollider.transform.position);
+        }
 		if (isGround2) {
 			ms_Rigidbody.AddForceAtPosition (_wheels.rightRearWheel.wheelCollider.transform.up * roolForce1, _wheels.rightRearWheel.wheelCollider.transform.position); 
 		}
@@ -1722,8 +1745,8 @@ public class MSVehicleControllerFree : MonoBehaviour {
 	#region VolantManager
 
 	void Volant(){
-		angle1Ref = Mathf.MoveTowards(angle1Ref, horizontalInput, 2*Time.deltaTime);
-		angle2Volant = Mathf.MoveTowards(angle2Volant, horizontalInput, 2*Time.deltaTime);
+        angle1Ref = 0;// Mathf.MoveTowards(angle1Ref, horizontalInput, 2*Time.deltaTime);
+        angle2Volant = 0;// Mathf.MoveTowards(angle2Volant, horizontalInput, 2*Time.deltaTime);
 		maxAngleVolant = 27.0f * _vehicleSettings.angle_x_Velocity.Evaluate (KMh);
 		angleRefVolant = Mathf.Clamp (angle1Ref * maxAngleVolant, -maxAngleVolant, maxAngleVolant);
 
@@ -1837,10 +1860,12 @@ public class MSVehicleControllerFree : MonoBehaviour {
 	}
 
 	void ApplyTorque(){
-		leftDifferential = 1+Mathf.Abs((0.2f * Mathf.Abs(Mathf.Clamp (horizontalInput, 0, 1)))*(angleRefVolant/60)); 
-		rightDifferential = 1+Mathf.Abs((0.2f * Mathf.Abs(Mathf.Clamp (horizontalInput, -1, 0)))*(angleRefVolant/60)); 
-		//torque do motor
-		if (theEngineIsRunning && isInsideTheCar) {
+        leftDifferential = 1+Mathf.Abs((0.2f)*(angleRefVolant/60));
+        rightDifferential = leftDifferential;
+        //leftDifferential = 1+Mathf.Abs((0.2f * Mathf.Abs(Mathf.Clamp (horizontalInput, 0, 1)))*(angleRefVolant/60));
+        //rightDifferential = 1+Mathf.Abs((0.2f * Mathf.Abs(Mathf.Clamp (horizontalInput, -1, 0)))*(angleRefVolant/60)); 
+        //torque do motor
+        if (theEngineIsRunning && isInsideTheCar) {
 			if (_wheels.rightFrontWheel.wheelDrive) {
 				_wheels.rightFrontWheel.wheelCollider.motorTorque = VehicleTorque (_wheels.rightFrontWheel.wheelCollider) * rightDifferential;
 			}
